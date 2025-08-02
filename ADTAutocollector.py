@@ -50,7 +50,6 @@ class AutoCollector(FileSystemEventHandler):
         It first checks for a '.atd' file to rename, then checks for a
         'pass.atdx' file to move.
         """
-        # Only care about files
         if not path.is_file():
             return
 
