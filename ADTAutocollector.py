@@ -1,4 +1,6 @@
 import re
+import os
+import sys
 import shutil
 import tkinter as tk
 from tkinter import scrolledtext, messagebox, filedialog
@@ -8,9 +10,17 @@ from watchdog.observers import Observer
 from datetime import datetime
 
 # --- CONFIGURATION (Default Values) ---
-# These are now default values (can be changed by user in the GUI).
-DEFAULT_SOURCE_PATH = Path(r"/Users/khaitran/Desktop/Fabrinet/ATDX Copy Project/testfolder1")
-DEFAULT_DESTINATION_PATH = Path(r"/Users/khaitran/Desktop/Fabrinet/ATDX Copy Project/test2")
+
+if getattr(sys, 'frozen', False):
+    # This will run when the script is running as a compiled executable.
+    base_path = Path(sys.executable).parent
+else:
+    # This will run when the script is run directly (e.g in a development environment)
+    # It points to the directory of the script file itself.
+    base_path = Path(__file__).parent
+
+DEFAULT_SOURCE_PATH = base_path / 'src_test'
+DEFAULT_DESTINATION_PATH = base_path / 'dst_test'
 
 # Rename only files ending in "pass.ATD" (case-insensitive)
 ATD_RE = re.compile(r"pass\.atd$", re.IGNORECASE)
