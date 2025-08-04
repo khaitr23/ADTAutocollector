@@ -27,7 +27,7 @@ jobs:
         pip install pyinstaller
 
     - name: Package Application
-      run: pyinstaller --noconsole ADTAutocollector.py
+      run: pyinstaller --noconsole --onedir ADTAutocollector.py
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
