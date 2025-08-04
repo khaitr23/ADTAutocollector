@@ -2,6 +2,7 @@ import re
 import os
 import sys
 import shutil
+import time
 import tkinter as tk
 from tkinter import scrolledtext, messagebox, filedialog
 from pathlib import Path
@@ -27,6 +28,10 @@ ATD_RE = re.compile(r"pass\.atd$", re.IGNORECASE)
 
 # Move only files ending in "pass.ATDX" (case-insensitive)
 ATDX_RE = re.compile(r"pass\.atdx$", re.IGNORECASE)
+
+# Retry parameters for file operations
+MAX_RETRIES = 5
+RETRY_DELAY_SECONDS = 0.5
 
 
 class AutoCollector(FileSystemEventHandler):
@@ -66,15 +71,24 @@ class AutoCollector(FileSystemEventHandler):
         # If it ends in "pass.atd", rename to "pass.atdx"
         if ATD_RE.search(path.name):
             new_path = path.with_suffix(".ATDX")
-            try:
-                # Rename the file
-                path.rename(new_path)
-                self.report_message(f"RENAMED: {path.name} TO {new_path.name}", level="SUCCESS")
-                # Update the path variable to the new path so the next check uses the new filename
-                path = new_path
-            except Exception as e:
-                self.report_message(f"Failed to rename {path.name}: {e}", level="ERROR")
-                return
+            for i in range(MAX_RETRIES):
+                try:
+                    # Rename the file
+                    path.rename(new_path)
+                    self.report_message(f"RENAMED: {path.name} TO {new_path.name}", level="SUCCESS")
+                    # Update the path variable to the new path so the next check uses the new filename
+                    path = new_path
+                    break  # Break out of the retry loop on file rename success
+                except OSError as e:
+                    if i < MAX_RETRIES:
+                        self.report_message(f"Attempt {i+1}/{MAX_RETRIES}: Failed to rename {path.name} (retrying): {e}", level="INFO")
+                        time.sleep(RETRY_DELAY_SECONDS)
+                    else:
+                        self.report_message(f"Failed to rename {path.name} after {MAX_RETRIES} attempts: {e}", level="ERROR")
+                        return # Exit if all retries fail
+                except Exception as e:
+                    self.report_message(f"Failed to rename {path.name}: {e}", level="ERROR")
+                    return
 
         # If the file name now ends in "pass.atdx", move it
         if ATDX_RE.search(path.name):
@@ -112,7 +126,6 @@ class AutoCollectorApp:
 
         self.create_widgets()
         self.configure_tags()
-        self.check_paths()
         self.update_toggle_button()
 
     def create_widgets(self):
@@ -173,22 +186,24 @@ class AutoCollectorApp:
             self.update_toggle_button()
 
     def check_paths(self):
-        # Get paths from the Entry widgets
+        """
+        Checks both paths and returns a tuple: (is_valid: bool, error_message: str).
+        The error message will contain both invalid paths if applicable.
+        """
+        error_messages = []
         source_path = Path(self.source_path_var.get())
         destination_path = Path(self.destination_path_var.get())
 
-        source_exists = source_path.is_dir()
-        dest_exists = destination_path.is_dir()
+        if not source_path.is_dir():
+            error_messages.append(f"Source directory not found: {source_path}")
+        
+        if not destination_path.is_dir():
+            error_messages.append(f"Destination directory not found: {destination_path}")
 
-        if not source_exists:
-            messagebox.showerror("Error", f"Source directory not found: {source_path}")
-            self.toggle_button.config(state=tk.DISABLED)
-            return False
-        if not dest_exists:
-            messagebox.showerror("Error", f"Destination directory not found: {destination_path}")
-            self.toggle_button.config(state=tk.DISABLED)
-            return False
-        return True
+        if error_messages:
+            return False, "\n\n".join(error_messages)
+        else:
+            return True, ""
 
     def toggle_monitoring(self):
         if self.is_monitoring_active:
@@ -198,7 +213,9 @@ class AutoCollectorApp:
         self.update_toggle_button()
 
     def start_monitoring(self):
-        if not self.check_paths():
+        is_valid, error_message = self.check_paths()
+        if not is_valid:
+            messagebox.showerror("Error", error_message)
             return
 
         # Get current paths from the Entry widgets
