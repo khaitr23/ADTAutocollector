@@ -33,4 +33,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ADTAutocollector-Windows-exe
-        path: dist/ADTAutocollector/ADTAutocollector.exe
+        path: dist/ADTAutocollector.exe
