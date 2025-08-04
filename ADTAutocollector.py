@@ -26,7 +26,7 @@ DEFAULT_DESTINATION_PATH = base_path / 'dst_test'
 # Rename only files ending in "pass.ATD" (case-insensitive)
 ATD_RE = re.compile(r"pass\.atd$", re.IGNORECASE)
 
-# Move only files ending in "pass.ATDX" (case-insensitive)
+# copy only files ending in "pass.ATDX" (case-insensitive)
 ATDX_RE = re.compile(r"pass\.atdx$", re.IGNORECASE)
 
 # Retry parameters for file operations
@@ -61,16 +61,16 @@ class AutoCollector(FileSystemEventHandler):
 
     def process(self, path: Path):
         """
-        Processes a file, checking if it needs to be renamed and/or moved.
+        Processes a file, checking if it needs to be renamed and/or copied.
         It first checks for a '.atd' file to rename, then checks for a
-        'pass.atdx' file to move.
+        'pass.atdx' file to copy.
         """
         if not path.is_file():
             return
 
         # If it ends in "pass.atd", rename to "pass.atdx"
         if ATD_RE.search(path.name):
-            new_path = path.with_suffix(".ATDX")
+            new_path = path.with_suffix(".atdx")
             for i in range(MAX_RETRIES):
                 try:
                     # Rename the file
@@ -90,16 +90,26 @@ class AutoCollector(FileSystemEventHandler):
                     self.report_message(f"Failed to rename {path.name}: {e}", level="ERROR")
                     return
 
-        # If the file name now ends in "pass.atdx", move it
+        # If the file name now ends in "pass.atdx", copy it
         if ATDX_RE.search(path.name):
-            try:
-                rel = path.relative_to(self.src)
-                target = self.dst / rel
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(path), str(target))
-                self.report_message(f"MOVED: {rel} TO {target}", level="SUCCESS")
-            except Exception as e:
-                self.report_message(f"Failed to move {rel}: {e}", level="ERROR")
+            rel = path.relative_to(self.src)
+            target = self.dst / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+
+            for i in range(MAX_RETRIES):
+                try:
+                    shutil.copy2(str(path), str(target))
+                    self.report_message(f"COPIED: {rel} TO {target}", level="SUCCESS")
+                    break
+                except OSError as e:
+                    if i < MAX_RETRIES - 1:
+                        self.report_message(f"Attempt {i+1}/{MAX_RETRIES}: Failed to copy {rel} (retrying): {e}", level="INFO")
+                        time.sleep(RETRY_DELAY_SECONDS)
+                    else:
+                        self.report_message(f"Failed to copy {rel} after {MAX_RETRIES} attempts: {e}", level="ERROR")
+                except Exception as e:
+                    self.report_message(f"Failed to copy {rel}: {e}", level="ERROR")
+                    break
 
     def on_any_event(self, event):
         try:
