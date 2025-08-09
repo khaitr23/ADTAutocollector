@@ -35,10 +35,12 @@ RETRY_DELAY_SECONDS = 0.5
 
 
 class AutoCollector(FileSystemEventHandler):
-    def __init__(self, src: Path, dst: Path, log_display):
+    def __init__(self, src: Path, dst: Path, log_display, excluded_company: str):
         self.src = src
         self.dst = dst
         self.log_display = log_display
+        # store excluded companies in a list, converted to uppercase
+        self.excluded_companies = [c.strip().upper() for c in excluded_company.split(',')] if excluded_company else []
 
     def report_message(self, message, level="INFO"):
         """Reports messages to the GUI log display with colored tags."""
@@ -59,6 +61,17 @@ class AutoCollector(FileSystemEventHandler):
         self.log_display.see(tk.END)
         self.log_display.config(state=tk.DISABLED)
 
+    def _get_company_from_filename(self, filename: str) -> str | None:
+        """
+        Extracts company name from the filename.
+        The company name should be between the first and second underscore of the filename.
+        e.g. '34116809C252800001_AUR_200-000362-02-B-R04-OPT1_162326_PASS.atd' -> 'AUR'
+        """
+        parts = filename.split('_')
+        if len(parts) > 1:
+            return parts[1]
+        return None
+    
     def process(self, path: Path):
         """
         Processes a file, checking if it needs to be renamed and/or copied.
@@ -66,6 +79,11 @@ class AutoCollector(FileSystemEventHandler):
         'pass.atdx' file to copy.
         """
         if not path.is_file():
+            return
+        
+        company_name = self._get_company_from_filename(path.name)
+        if company_name and company_name.upper() in self.excluded_companies:
+            self.report_message(f"SKIPPED: {path.name} (company '{company_name}' is excluded)", level="INFO")
             return
 
         # If it ends in "pass.atd", rename to "pass.atdx"
@@ -129,6 +147,7 @@ class AutoCollectorApp:
 
         self.source_path_var = tk.StringVar(value=str(DEFAULT_SOURCE_PATH))
         self.destination_path_var = tk.StringVar(value=str(DEFAULT_DESTINATION_PATH))
+        self.excluded_company_var = tk.StringVar(value="")
 
         self.observer = None
         self.handler = None
@@ -162,6 +181,15 @@ class AutoCollectorApp:
         self.destination_path_entry.pack(side=tk.LEFT, fill="x", expand=True)
         self.destination_browse_button = tk.Button(dest_frame, text="Browse", command=lambda: self.browse_path(self.destination_path_var))
         self.destination_browse_button.pack(side=tk.LEFT, padx=5)
+
+        exclusion_frame = tk.LabelFrame(self.root, text="Exclusion", padx=10, pady=10, bg="#444444", fg="white")
+        exclusion_frame.pack(padx=10, pady=10, fill="x")
+
+        exclusion_input_frame = tk.Frame(exclusion_frame, bg="#444444")
+        exclusion_input_frame.pack(fill="x", pady=2)
+        tk.Label(exclusion_input_frame, text="Exclude Companies (e.g., 'AUR, XYZ, ABC'):", bg="#444444", fg="white").pack(side=tk.LEFT, padx=5)
+        self.excluded_company_entry = tk.Entry(exclusion_input_frame, textvariable=self.excluded_company_var, width=20, bg="#666666", fg="white")
+        self.excluded_company_entry.pack(side=tk.LEFT, fill="x", expand=True)
 
         # Control button (single toggle button)
         control_frame = tk.Frame(self.root, padx=10, pady=5)
@@ -231,13 +259,14 @@ class AutoCollectorApp:
         # Get current paths from the Entry widgets
         source_path = Path(self.source_path_var.get())
         destination_path = Path(self.destination_path_var.get())
+        excluded_company_string = self.excluded_company_var.get().strip()
 
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete(1.0, tk.END)
         self.log_text.config(state=tk.DISABLED)
 
         # Pass new paths to the AutoCollector handler
-        self.handler = AutoCollector(source_path, destination_path, self.log_text)
+        self.handler = AutoCollector(source_path, destination_path, self.log_text, excluded_company_string)
         self.handler.report_message("Starting AutoCollector...", level="INFO")
 
         self.observer = Observer()
@@ -246,6 +275,8 @@ class AutoCollectorApp:
 
         self.handler.report_message(f"Watching: {source_path}", level="INFO")
         self.handler.report_message(f"Destination: {destination_path}", level="INFO")
+        if excluded_company_string:
+            self.handler.report_message(f"Excluding files from companies: '{excluded_company_string}'", level="INFO")
 
         self.handler.report_message("Performing initial scan of existing files...", level="INFO")
         self.initial_scan(self.handler)
