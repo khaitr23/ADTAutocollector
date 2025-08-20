@@ -110,23 +110,22 @@ class AutoCollector(FileSystemEventHandler):
 
         # If the file name now ends in "pass.atdx", copy it
         if ATDX_RE.search(path.name):
-            rel = path.relative_to(self.src)
-            target = self.dst / rel
+            target = self.dst / path.name
             target.parent.mkdir(parents=True, exist_ok=True)
 
             for i in range(MAX_RETRIES):
                 try:
                     shutil.copy2(str(path), str(target))
-                    self.report_message(f"COPIED: {rel} TO {target}", level="SUCCESS")
+                    self.report_message(f"COPIED: {path.name} TO {target}", level="SUCCESS")
                     break
                 except OSError as e:
                     if i < MAX_RETRIES - 1:
-                        self.report_message(f"Attempt {i+1}/{MAX_RETRIES}: Failed to copy {rel} (retrying): {e}", level="INFO")
+                        self.report_message(f"Attempt {i+1}/{MAX_RETRIES}: Failed to copy {path.name} (retrying): {e}", level="INFO")
                         time.sleep(RETRY_DELAY_SECONDS)
                     else:
-                        self.report_message(f"Failed to copy {rel} after {MAX_RETRIES} attempts: {e}", level="ERROR")
+                        self.report_message(f"Failed to copy {path.name} after {MAX_RETRIES} attempts: {e}", level="ERROR")
                 except Exception as e:
-                    self.report_message(f"Failed to copy {rel}: {e}", level="ERROR")
+                    self.report_message(f"Failed to copy {path.name}: {e}", level="ERROR")
                     break
 
     def on_any_event(self, event):
@@ -323,8 +322,9 @@ class AutoCollectorApp:
 
     def initial_scan(self, handler: AutoCollector):
         try:
-            for p in handler.src.rglob("**/*"):
-                handler.process(p)
+            for p in handler.src.rglob("*"):
+                if p.is_file():
+                    handler.process(p)
         except Exception as e:
             handler.report_message(f"Error during initial scan: {e}", level="ERROR")
 
